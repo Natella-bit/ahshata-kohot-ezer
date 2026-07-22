@@ -1,0 +1,741 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { 
+  Users, Calendar, Clock, BookOpen, AlertCircle, ChevronDown, Check, 
+  MapPin, LogOut, ArrowRight, Book, Download, QrCode, ClipboardCheck 
+} from 'lucide-react';
+
+// Placeholder for Firebase - in a real app, you'd initialize real Firebase here
+const mockDb = {
+  users: {},
+  attendance: []
+};
+
+// Simplified TOTP generator for demo purposes
+const getTotpToken = () => {
+  const timeSlice = Math.floor(Date.now() / 30000); // 30 seconds
+  return btoa(`ziv-${timeSlice}`).substring(0, 8).toUpperCase();
+};
+
+const syllabusData = [
+  {
+    day: 1,
+    date: '1.12.26',
+    title: 'יום הדרכה 1: תפקיד, חוק וזכויות',
+    lectures: [
+      { time: '08:00-09:30', subject: 'הגדרת תפקיד וגבולות עיסוק, חוק זכויות החולה, שמירת סודיות רפואית', instructor: 'סימה אליהו', role: 'מרכזת הדרכה ופיתוח מקצועי', hasGlossary: true, topic: 'חוק זכויות החולה' },
+      { time: '09:30-09:45', subject: 'הפסקה', instructor: '', isBreak: true },
+      { time: '09:45-11:15', subject: 'כללים במתן שירות למטופל', instructor: 'קטי גרשט', role: '' },
+      { time: '11:15-11:30', subject: 'הפסקה', instructor: '', isBreak: true },
+      { time: '11:30-13:00', subject: 'רב תרבותיות', instructor: 'ד"ר ליאורה', role: '' },
+      { time: '13:00-13:30', subject: 'הפסקה', instructor: '', isBreak: true },
+      { time: '13:30-15:00', subject: 'תקשורת בין מטופלים ומטפלים, אוכלוסיות בסיכון', instructor: 'ד"ר ליאורה', role: '' }
+    ]
+  },
+  {
+    day: 2,
+    date: '8.12.26',
+    title: 'יום הדרכה 2: בטיחות והתמודדות',
+    lectures: [
+      { time: '08:00-09:30', subject: 'בטיחות המטפל: חשיפה לדם ונוזלי גוף, אירוע דקירה, טיפול במטופל בבידוד', instructor: 'מרים / שיבלי', role: 'יחידה למניעת זיהומים', hasGlossary: true, topic: 'בטיחות המטפל' },
+      { time: '09:30-09:45', subject: 'הפסקה', instructor: '', isBreak: true },
+      { time: '09:45-11:15', subject: 'ניהול סיכונים ובטיחות הטיפול', instructor: 'עדי אפוטה', role: 'ניהול סיכונים' },
+      { time: '11:15-11:30', subject: 'הפסקה', instructor: '', isBreak: true },
+      { time: '11:30-12:15', subject: 'בטיחות המטפל: יציבה נכונה', instructor: 'עופרה כהן', role: 'פיזיותרפיה' },
+      { time: '12:15-13:00', subject: 'התנהגות בשעת חירום', instructor: 'עופרה כהן', role: '' },
+      { time: '13:00-13:30', subject: 'הפסקה', instructor: '', isBreak: true },
+      { time: '13:30-14:15', subject: 'מניעת אלימות והטרדה מינית', instructor: 'רחל לוי', role: '' },
+      { time: '14:15-15:00', subject: 'התמודדות עם אובדן ומוות', instructor: 'רוני להב', role: 'עוסי"ת' }
+    ]
+  },
+  {
+    day: 3,
+    date: '22.12.26',
+    title: 'יום הדרכה 3: היגיינה והזנה',
+    lectures: [
+      { time: '08:00-09:30', subject: 'היגיינה אישית, רחצה וטיפול פה. הזנת מטופל דרך הפה/דרך גסטרוסטום (ידע בלבד)', instructor: 'מלי שלוי', role: 'הדרכה קלינית', hasGlossary: true, topic: 'היגיינה אישית' },
+      { time: '09:30-09:45', subject: 'הפסקה', instructor: '', isBreak: true },
+      { time: '09:45-11:15', subject: 'הכרת סוגי הזנה/דיאטות', instructor: 'דנה ארדנברג', role: 'תזונאית' },
+      { time: '11:15-11:30', subject: 'הכרת סוגי הדיאטות IDDSI', instructor: 'דנה ארדנברג', role: '' },
+      { time: '11:30-13:00', subject: 'טיפול במזון - היגיינה, הזמנה וחלוקה', instructor: 'דנה ארדנברג', role: '' },
+      { time: '13:00-13:30', subject: 'הפסקה', instructor: '', isBreak: true },
+      { time: '13:30-15:00', subject: 'טיפול בהפרשות - שתן, זונדה, סטומה. החלפת שקית (קטטר/זונדה)', instructor: 'מלי שלוי', role: 'הדרכה קלינית' }
+    ]
+  },
+  {
+    day: 4,
+    date: '29.12.26',
+    title: 'יום הדרכה 4: ניידות ומדדים',
+    lectures: [
+      { time: '08:00-09:30', subject: 'טיפול בנפטר. הליכה, השכבה, הורדה והושבה. שימוש באמצעי עזר לניידות, שינויי תנוחה', instructor: 'מלי שלוי', role: 'הדרכה קלינית' },
+      { time: '09:30-09:45', subject: 'הפסקה', instructor: '', isBreak: true },
+      { time: '09:45-11:15', subject: 'א.ק.ג, סימנים חיוניים, משקל וגובה. בדיקת רמת סוכר באמצעות גלוקומטר', instructor: 'איילת זעירא להב', role: '', hasGlossary: true, topic: 'סימנים חיוניים' },
+      { time: '11:15-11:30', subject: 'הפסקה', instructor: '', isBreak: true },
+      { time: '11:30-13:00', subject: 'א.ק.ג וגלוקומטר - המשך תרגול', instructor: 'איילת זעירא להב', role: '' },
+      { time: '13:00-13:30', subject: 'הפסקה', instructor: '', isBreak: true },
+      { time: '13:30-15:00', subject: 'דיווח ותיעוד לאחות המוסמכת', instructor: 'איילת זעירא להב', role: '' }
+    ]
+  },
+  {
+    day: 5,
+    date: '5.1.27',
+    title: 'יום הדרכה 5: סביבת המטופל וסיכום',
+    lectures: [
+      { time: '08:00-09:30', subject: 'הכנת ותחזוק יחידת מטופל', instructor: 'מלי', role: '' },
+      { time: '09:30-09:45', subject: 'הפסקה', instructor: '', isBreak: true },
+      { time: '09:45-11:15', subject: 'טיפול ותחזוקת ציוד רפואי', instructor: 'עלאא אליאס', role: 'הנדסה רפואית' },
+      { time: '11:15-11:30', subject: 'הפסקה', instructor: '', isBreak: true },
+      { time: '11:30-13:00', subject: 'חיטוי וניקוי מיכשור רפואי', instructor: 'מרים / שיבלי', role: 'מניעת זיהומים' },
+      { time: '13:00-13:30', subject: 'הפסקה', instructor: '', isBreak: true },
+      { time: '13:30-15:00', subject: 'סיכום ההכשרה + העברת משוב', instructor: 'סימה ועדי', role: 'הנהלת האחיות' }
+    ]
+  }
+];
+
+const glossaryData = {
+  'חוק זכויות החולה': [
+    { term: 'זכויות החולה', def: 'חוק המגדיר את זכויותיו של אדם המבקש טיפול רפואי או המקבל טיפול רפואי, תוך שמירה על כבודו ופרטיותו.' },
+    { term: 'סודיות רפואית', def: 'החובה לשמור בסוד כל מידע הנוגע למטופל שהגיע לצוות המטפל במהלך מילוי תפקידו.' }
+  ],
+  'בטיחות המטפל': [
+    { term: 'חשיפה לדם ונוזלי גוף', def: 'מצב בו איש צוות נחשף לדם או נוזלי גוף של מטופל, דורש דיווח וטיפול מיידי לפי נוהל למניעת הדבקה.' },
+    { term: 'בידוד מגע', def: 'אמצעי זהירות הננקטים כאשר מטופל נושא חיידק עמיד, מחייב לבישת כפפות וחלוק בכניסה לחדר.' }
+  ],
+  'היגיינה אישית': [
+    { term: 'רחצה במיטה', def: 'ניקוי גופו של מטופל המרותק למיטתו, תוך שמירה על פרטיותו, חום גופו ובטיחותו.' },
+    { term: 'גסטרוסטום (PEG)', def: 'צינור הזנה המוחדר ישירות לקיבה דרך דופן הבטן, משמש מטופלים שאינם יכולים לבלוע מזון.' }
+  ],
+  'סימנים חיוניים': [
+    { term: 'א.ק.ג (ECG)', def: 'רישום הפעילות החשמלית של הלב, בדיקה לא פולשנית המשמשת להערכת תקינות תפקוד הלב.' },
+    { term: 'גלוקומטר', def: 'מכשיר רפואי נייד המשמש למדידת רמת הסוכר (גלוקוז) בדם, לרוב באמצעות דקירה קטנה באצבע.' }
+  ]
+};
+
+const Header = () => (
+  <header className="bg-white/90 backdrop-blur-md sticky top-0 z-50 border-b border-sky-100 shadow-sm py-3 px-4 md:px-8">
+    <div className="max-w-6xl mx-auto flex justify-between items-center">
+      <div className="flex items-center gap-3">
+        <div className="h-12 flex items-center justify-center cursor-pointer hover:scale-105 transition-transform" onClick={() => window.location.hash = ''}>
+          {/* Logo implementation from previous fix */}
+          <img src="ziv-logo-updated.png" alt="לוגו המרכז הרפואי זיו" className="h-full object-contain" />
+        </div>
+      </div>
+      <div className="flex flex-col items-end gap-1 text-sm text-slate-600">
+        <a href="tel:04-6828460" className="flex items-center gap-2 hover:text-sky-700 transition-colors">
+          <span dir="ltr" className="font-medium">04-6828460</span>
+        </a>
+        <a href="mailto:siudm@gov.il" className="hidden sm:flex items-center gap-2 hover:text-sky-700 transition-colors">
+          <span className="font-medium">siudm@gov.il</span>
+        </a>
+      </div>
+    </div>
+  </header>
+);
+
+const HomeView = ({ navigate, openGlossary }) => {
+  const [openDay, setOpenDay] = useState(1);
+
+  const toggleDay = (day) => {
+    setOpenDay(openDay === day ? null : day);
+  };
+
+  return (
+    <main className="flex-grow max-w-6xl mx-auto w-full p-4 md:p-8 flex flex-col gap-8">
+      <section className="bg-gradient-to-br from-sky-900 via-sky-700 to-sky-800 rounded-3xl p-8 md:p-12 text-center text-white shadow-xl relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full blur-3xl"></div>
+        <div className="relative z-10">
+          <span className="inline-block px-4 py-1.5 bg-white/20 backdrop-blur-sm border border-white/30 text-sm font-bold rounded-full mb-6">
+            תכנית הכשרה קלינית
+          </span>
+          <h2 className="text-3xl md:text-5xl font-extrabold mb-6 leading-tight">
+            תחומי עיסוק ופעילות של כוח עזר <br className="hidden md:block"/> מיומן במערך האשפוז
+          </h2>
+          <p className="text-sky-100 max-w-3xl mx-auto leading-relaxed mb-10 text-base md:text-lg">
+            הטיפול במטופלים כרוניים ובמטופלים במצבים אקוטיים מורכבים במערך האשפוז דורש את התמקצעות האחות המוסמכת. הסיוע לאחות במתן טיפול בסיסי יפנה את זמנה לניהול הטיפול ולמיומנויות קליניות מתקדמות.
+          </p>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl mx-auto">
+            <button 
+              onClick={() => navigate('projector')}
+              className="bg-white text-sky-900 hover:bg-sky-50 font-bold py-4 px-6 rounded-2xl shadow-lg transition-all flex items-center justify-center gap-3 group"
+            >
+              <QrCode className="group-hover:scale-110 transition-transform" />
+              מסך מקרן כיתה (QR)
+            </button>
+            <button 
+              onClick={() => navigate('checkin', { token: getTotpToken(), m: 1 })}
+              className="bg-sky-800 border border-sky-600 text-white hover:bg-sky-700 font-bold py-4 px-6 rounded-2xl shadow-lg transition-all flex items-center justify-center gap-3"
+            >
+              <ClipboardCheck />
+              הדמיית סריקת סטודנט
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-slate-100 flex flex-col justify-center">
+          <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
+            <Calendar className="text-sky-600" /> אודות ההכשרה
+          </h3>
+          <p className="text-slate-600 leading-relaxed mb-4">
+            הטיפול במטופלים מורכבים המאושפזים בבתי חולים דורש את התמקצעות האחות המוסמכת. הקורס נועד להכשיר כוח עזר מיומן לסייע בביצוע פעולות בסיסיות, תוך יישום הנחיות משרד הבריאות וחוזר מנהל הסיעוד.
+          </p>
+          <div className="flex flex-wrap gap-3 text-sm font-medium">
+            <span className="bg-slate-100 px-3 py-1.5 rounded-lg text-slate-700">120 שעות (5 מפגשים + 10 משמרות)</span>
+            <span className="bg-slate-100 px-3 py-1.5 rounded-lg text-slate-700" dir="ltr">1.12.26 - 5.1.27</span>
+          </div>
+        </div>
+        
+        <div className="bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-slate-100 text-center flex flex-col justify-center">
+          <h3 className="font-bold text-xl mb-6 text-slate-800 flex items-center justify-center gap-2">
+            <Users className="text-teal-600" /> מובילות ההכשרה
+          </h3>
+          <div className="flex justify-center gap-6 md:gap-10 items-start">
+            <div className="text-center flex flex-col items-center group">
+              <div className="w-20 h-20 md:w-28 md:h-28 bg-gradient-to-tr from-sky-100 to-white p-1 rounded-full mb-3 shadow-md group-hover:shadow-lg transition-all duration-300 transform group-hover:-translate-y-1">
+                <div className="w-full h-full rounded-full border-2 border-white overflow-hidden bg-slate-100 flex items-center justify-center">
+                  <img src="sima.png" alt="סימה אליהו" className="w-full h-full object-cover" />
+                </div>
+              </div>
+              <h4 className="font-bold text-slate-800 text-base md:text-lg">סימה אליהו</h4>
+              <p className="text-xs text-sky-700 font-medium mt-1 bg-sky-50 px-3 py-1 rounded-full">מרכזת הדרכה</p>
+            </div>
+            
+            <div className="text-center flex flex-col items-center group">
+              <div className="w-20 h-20 md:w-28 md:h-28 bg-gradient-to-tr from-teal-100 to-white p-1 rounded-full mb-3 shadow-md group-hover:shadow-lg transition-all duration-300 transform group-hover:-translate-y-1">
+                <div className="w-full h-full rounded-full border-2 border-white overflow-hidden bg-slate-100 flex items-center justify-center">
+                  <img src="adi.png" alt="עדי טלבי" className="w-full h-full object-cover" />
+                </div>
+              </div>
+              <h4 className="font-bold text-slate-800 text-base md:text-lg">עדי טלבי</h4>
+              <p className="text-xs text-teal-700 font-medium mt-1 bg-teal-50 px-3 py-1 rounded-full">הנהלת האחיות</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Syllabus Section */}
+      <section className="bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-slate-100 mt-4">
+        <div className="flex items-center gap-3 mb-8 pb-4 border-b border-slate-100">
+          <BookOpen className="text-sky-600 w-8 h-8" />
+          <div>
+            <h3 className="text-2xl font-bold text-slate-800">תכנית הלימודים</h3>
+            <p className="text-slate-500 text-sm">סילבוס קורס כוח עזר מיומן (5 ימי הדרכה)</p>
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          {syllabusData.map((dayData) => (
+            <div key={dayData.day} className="border border-slate-200 rounded-2xl overflow-hidden bg-slate-50/30 transition-all hover:border-sky-200">
+              <button 
+                onClick={() => toggleDay(dayData.day)}
+                className="w-full px-6 py-4 flex items-center justify-between bg-white focus:outline-none"
+              >
+                <div className="flex items-center gap-4">
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold transition-colors ${openDay === dayData.day ? 'bg-sky-600 text-white' : 'bg-sky-100 text-sky-800'}`}>
+                    {dayData.day}
+                  </div>
+                  <div className="text-right">
+                    <h4 className="font-bold text-lg text-slate-800">{dayData.title}</h4>
+                    <span className="text-sm text-slate-500">{dayData.date}</span>
+                  </div>
+                </div>
+                <ChevronDown className={`text-slate-400 transition-transform duration-300 ${openDay === dayData.day ? 'rotate-180' : ''}`} />
+              </button>
+              
+              <div className={`overflow-hidden transition-all duration-300 ${openDay === dayData.day ? 'max-h-[2000px] opacity-100 pb-6' : 'max-h-0 opacity-0'}`}>
+                <div className="px-6 pt-2">
+                  <div className="border-r-2 border-sky-100 pr-6 space-y-4">
+                    {dayData.lectures.map((lecture, idx) => (
+                      <div key={idx} className="relative">
+                        <div className={`absolute -right-[31px] top-4 w-4 h-4 rounded-full border-2 border-white ${lecture.isBreak ? 'bg-amber-400' : 'bg-sky-500'}`}></div>
+                        <div className={`p-4 rounded-xl border ${lecture.isBreak ? 'bg-amber-50/50 border-amber-100' : 'bg-white border-slate-100 shadow-sm'}`}>
+                          
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
+                            <div className="flex items-center gap-3">
+                              <span className={`font-bold text-sm px-2 py-0.5 rounded ${lecture.isBreak ? 'bg-amber-100 text-amber-800' : 'bg-sky-100 text-sky-800'}`} dir="ltr">
+                                {lecture.time}
+                              </span>
+                              {lecture.hasGlossary && (
+                                <button 
+                                  onClick={() => openGlossary(lecture.topic)}
+                                  className="text-xs font-semibold bg-teal-50 text-teal-700 hover:bg-teal-100 px-3 py-1 rounded-full border border-teal-100 transition-colors flex items-center gap-1.5"
+                                >
+                                  <Book className="w-3.5 h-3.5" /> מושגים רלוונטיים
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          <h5 className={`font-bold text-base ${lecture.isBreak ? 'text-amber-800' : 'text-slate-800'}`}>
+                            {lecture.subject}
+                          </h5>
+                          
+                          {!lecture.isBreak && lecture.instructor && (
+                            <div className="mt-3 flex items-center gap-2 text-sm">
+                              <div className="w-6 h-6 rounded-full bg-slate-200 flex items-center justify-center overflow-hidden">
+                                <Users className="w-3.5 h-3.5 text-slate-500" />
+                              </div>
+                              <span className="font-medium text-slate-700">{lecture.instructor}</span>
+                              {lecture.role && (
+                                <span className="text-slate-400 text-xs bg-slate-100 px-2 py-0.5 rounded-full">{lecture.role}</span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <div className="text-center mt-12 mb-8">
+        <button 
+          onClick={() => navigate('admin')}
+          className="text-sm text-slate-400 hover:text-sky-600 transition-colors flex items-center justify-center gap-2 mx-auto"
+        >
+          כניסת צוות הנהלה <ArrowRight className="w-4 h-4" />
+        </button>
+      </div>
+    </main>
+  );
+};
+
+const ProjectorView = ({ navigate }) => {
+  const [token, setToken] = useState(getTotpToken());
+  const meetingNum = 1; // Could be dynamic based on date
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setToken(getTotpToken());
+    }, 5000); // Check every 5s if slice changed
+    return () => clearInterval(interval);
+  }, []);
+
+  // Construct the check-in URL based on current host
+  const checkInUrl = `${window.location.origin}${window.location.pathname}?page=checkin&token=${token}&m=${meetingNum}`;
+
+  return (
+    <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-8 text-white text-center">
+      <div className="mb-8">
+        <h1 className="text-5xl font-extrabold text-sky-400 mb-4">רישום נוכחות - מפגש {meetingNum}</h1>
+        <p className="text-xl text-slate-300">קורס כוח עזר מיומן (120 שעות)</p>
+      </div>
+      
+      <div className="bg-white p-8 rounded-3xl shadow-2xl relative">
+        <div className="absolute -top-4 -right-4 bg-amber-500 text-white font-bold px-4 py-2 rounded-xl shadow-lg rotate-12 flex items-center gap-2">
+          <Clock className="w-5 h-5" /> מתעדכן חי
+        </div>
+        
+        {/* Fallback visual QR using placehold.co or simple CSS if library fails */}
+        <div className="w-80 h-80 border-4 border-slate-100 rounded-xl flex items-center justify-center relative overflow-hidden bg-slate-50">
+           {/* Simulate QR Code with a placeholder image for the artifact */}
+           <img src={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(checkInUrl)}`} alt="QR Code" className="w-full h-full object-cover" />
+        </div>
+        
+        <p className="text-slate-800 font-mono text-xl mt-6 tracking-widest bg-slate-100 py-2 rounded-lg">
+          CODE: {token}
+        </p>
+      </div>
+
+      <p className="mt-8 text-slate-400 max-w-lg text-lg">
+        סרוק את הקוד באמצעות מצלמת הנייד כדי לאשר נוכחות. <br/>הקוד מתחלף אוטומטית למניעת העברות מרחוק.
+      </p>
+
+      <button onClick={() => navigate('home')} className="mt-12 text-slate-500 hover:text-white transition-colors">
+        חזרה לדף הבית
+      </button>
+    </div>
+  );
+};
+
+const CheckInView = ({ navigate, urlParams }) => {
+  const [status, setStatus] = useState('verifying'); // verifying, form, success, error
+  const [errorMsg, setErrorMsg] = useState('');
+  const [userProfile, setUserProfile] = useState(null);
+  const [formData, setFormData] = useState({ name: '', id: '', dept: '' });
+
+  const token = urlParams.get('token');
+  const meetingNum = urlParams.get('m') || '1';
+
+  useEffect(() => {
+    // 1. Verify Token
+    if (token !== getTotpToken()) {
+      setStatus('error');
+      setErrorMsg('קוד הגישה פג תוקף או אינו חוקי. אנא סרוק שוב מהמסך בכיתה.');
+      return;
+    }
+
+    // 2. Check for existing session (simulate localStorage/cookie)
+    const savedSession = localStorage.getItem('ziv_student_profile');
+    if (savedSession) {
+      setUserProfile(JSON.parse(savedSession));
+      setStatus('confirm'); // Ready to just click "Confirm"
+    } else {
+      setStatus('form'); // Needs to fill profile
+    }
+  }, [token]);
+
+  const handleFormSubmit = (e) => {
+    e.preventDefault();
+    if(!formData.name || !formData.id) return;
+
+    const profile = { ...formData, uid: `u_${Date.now()}` };
+    localStorage.setItem('ziv_student_profile', JSON.stringify(profile));
+    
+    // Save to Mock DB
+    mockDb.users[profile.uid] = profile;
+    setUserProfile(profile);
+    
+    recordAttendance(profile);
+  };
+
+  const handleQuickConfirm = () => {
+    recordAttendance(userProfile);
+  };
+
+  const recordAttendance = (profile) => {
+    setStatus('processing');
+    
+    setTimeout(() => {
+      const now = new Date();
+      const hour = now.getHours();
+      let shift = 'morning';
+      
+      // Determine Morning (8am) vs Afternoon (3pm) based on time
+      if (hour >= 13) shift = 'afternoon';
+
+      // Mock DB save
+      mockDb.attendance.push({
+        uid: profile.uid,
+        name: profile.name,
+        id: profile.id,
+        dept: profile.dept,
+        meeting: meetingNum,
+        shift: shift,
+        timestamp: now.toISOString()
+      });
+
+      setStatus('success');
+    }, 800);
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-50 flex flex-col p-4 md:p-8">
+      <Header />
+      <div className="flex-grow flex items-center justify-center mt-8">
+        <div className="bg-white p-8 rounded-3xl shadow-lg w-full max-w-md border border-slate-100 text-center relative overflow-hidden">
+          <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-sky-400 to-teal-400"></div>
+          
+          {status === 'verifying' && (
+            <div className="py-8">
+              <div className="w-12 h-12 border-4 border-sky-200 border-t-sky-600 rounded-full animate-spin mx-auto mb-4"></div>
+              <p className="text-slate-600 font-medium">מאמת קוד סריקה...</p>
+            </div>
+          )}
+
+          {status === 'error' && (
+            <div className="py-6">
+              <div className="w-16 h-16 bg-red-100 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl">
+                <AlertCircle />
+              </div>
+              <h2 className="text-xl font-bold text-slate-800 mb-2">שגיאת אימות</h2>
+              <p className="text-slate-600 mb-6">{errorMsg}</p>
+              <button onClick={() => navigate('home')} className="bg-slate-100 text-slate-700 font-bold py-3 px-6 rounded-xl w-full">
+                חזרה לדף הבית
+              </button>
+            </div>
+          )}
+
+          {status === 'form' && (
+            <div className="text-right">
+              <h2 className="text-2xl font-bold text-slate-800 mb-2">ברוכים הבאים</h2>
+              <p className="text-slate-500 mb-6 text-sm">אנא השלם את פרטיך פעם אחת בלבד לרישום נוכחות במפגש {meetingNum}.</p>
+              
+              <form onSubmit={handleFormSubmit} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">שם מלא</label>
+                  <input type="text" required className="w-full p-3 rounded-xl border border-slate-200 focus:border-sky-500 focus:ring-1 focus:ring-sky-500 outline-none transition-all"
+                    value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="לדוגמא: ישראל ישראלי" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">תעודת זהות</label>
+                  <input type="text" required className="w-full p-3 rounded-xl border border-slate-200 focus:border-sky-500 focus:ring-1 focus:ring-sky-500 outline-none transition-all"
+                    value={formData.id} onChange={e => setFormData({...formData, id: e.target.value})} placeholder="9 ספרות" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">מחלקה בה אתה עובד</label>
+                  <input type="text" className="w-full p-3 rounded-xl border border-slate-200 focus:border-sky-500 focus:ring-1 focus:ring-sky-500 outline-none transition-all"
+                    value={formData.dept} onChange={e => setFormData({...formData, dept: e.target.value})} placeholder="לדוגמא: פנימית א'" />
+                </div>
+                
+                <button type="submit" className="w-full bg-sky-600 hover:bg-sky-700 text-white font-bold py-3.5 rounded-xl shadow-md transition-all mt-4">
+                  שמור ואשר נוכחות
+                </button>
+              </form>
+            </div>
+          )}
+
+          {status === 'confirm' && (
+            <div className="py-4">
+              <div className="w-20 h-20 bg-sky-50 text-sky-600 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl">
+                <Users />
+              </div>
+              <h2 className="text-2xl font-bold text-slate-800 mb-1">שלום {userProfile.name}</h2>
+              <p className="text-slate-500 mb-8">אישור נוכחות עבור מפגש מס' {meetingNum}</p>
+              
+              <button onClick={handleQuickConfirm} className="w-full bg-sky-600 hover:bg-sky-700 text-white font-bold py-4 rounded-xl shadow-md transition-all flex items-center justify-center gap-2 text-lg">
+                <Check /> אשר נוכחות עכשיו
+              </button>
+            </div>
+          )}
+
+          {status === 'processing' && (
+            <div className="py-12">
+              <div className="w-12 h-12 border-4 border-sky-200 border-t-sky-600 rounded-full animate-spin mx-auto mb-4"></div>
+              <p className="text-slate-600 font-medium">רושם במערכת...</p>
+            </div>
+          )}
+
+          {status === 'success' && (
+            <div className="py-6">
+              <div className="w-20 h-20 bg-green-100 text-green-500 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl">
+                <Check />
+              </div>
+              <h2 className="text-2xl font-bold text-slate-800 mb-2">נוכחות נרשמה בהצלחה!</h2>
+              <p className="text-slate-600 mb-2">השעה תועדה במערכת.</p>
+              <p className="text-sm text-slate-400 mb-8">תוכל לסגור חלון זה או לחזור למסך הראשי.</p>
+              <button onClick={() => navigate('home')} className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3 px-6 rounded-xl transition-all">
+                למסך הראשי
+              </button>
+            </div>
+          )}
+
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const AdminView = ({ navigate }) => {
+  const [auth, setAuth] = useState(false);
+  const [pass, setPass] = useState('');
+  const [records, setRecords] = useState([]);
+  const [filterDay, setFilterDay] = useState('all');
+
+  const handleLogin = (e) => {
+    e.preventDefault();
+    if (pass === 'ziv2026') { // Simple demo password
+      setAuth(true);
+      // Load mock records (generate some fake ones for demo)
+      generateMockRecords();
+    } else {
+      alert("סיסמה שגויה");
+    }
+  };
+
+  const generateMockRecords = () => {
+    const fakeData = [
+      { id: '111', name: 'ישראל ישראלי', dept: 'פנימית ב', meeting: '1', morning: '07:55', afternoon: '15:05' },
+      { id: '222', name: 'שרה כהן', dept: 'כירורגיה', meeting: '1', morning: '08:02', afternoon: '15:00' },
+      { id: '333', name: 'אחמד חלבי', dept: 'מיון', meeting: '1', morning: '07:50', afternoon: '15:10' },
+      { id: '111', name: 'ישראל ישראלי', dept: 'פנימית ב', meeting: '2', morning: '07:58', afternoon: '15:02' },
+    ];
+    setRecords(fakeData);
+  };
+
+  const filteredRecords = filterDay === 'all' ? records : records.filter(r => r.meeting === filterDay);
+
+  const exportCSV = () => {
+    const headers = ['תעודת זהות', 'שם', 'מחלקה', 'מפגש', 'כניסה בוקר', 'יציאה צהריים'];
+    const csvContent = [
+      headers.join(','),
+      ...filteredRecords.map(r => [r.id, r.name, r.dept, r.meeting, r.morning, r.afternoon].join(','))
+    ].join('\n');
+
+    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `דוח_נוכחות_${new Date().toLocaleDateString()}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  if (!auth) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4" dir="rtl">
+        <form onSubmit={handleLogin} className="bg-white p-8 rounded-2xl shadow-xl max-w-sm w-full text-center">
+          <div className="w-16 h-16 bg-slate-100 text-slate-600 rounded-full flex items-center justify-center mx-auto mb-4">
+            <LockIcon />
+          </div>
+          <h2 className="text-xl font-bold mb-6">כניסת מנהלי הכשרה</h2>
+          <input 
+            type="password" 
+            placeholder="סיסמה (ziv2026)" 
+            className="w-full p-3 rounded-xl border border-slate-200 mb-4 text-center text-lg"
+            value={pass} onChange={e => setPass(e.target.value)}
+          />
+          <button type="submit" className="w-full bg-slate-800 text-white font-bold py-3 rounded-xl mb-4">היכנס</button>
+          <button type="button" onClick={() => navigate('home')} className="text-sm text-slate-500">חזרה למסך הראשי</button>
+        </form>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-slate-50 p-4 md:p-8" dir="rtl">
+      <div className="max-w-6xl mx-auto">
+        <div className="flex flex-col md:flex-row items-center justify-between gap-4 mb-8">
+          <div>
+            <h1 className="text-3xl font-bold text-slate-800">פאנל ניהול נוכחות</h1>
+            <p className="text-slate-500">מעקב כוח עזר מיומן מחזור 2026</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <button onClick={() => navigate('home')} className="bg-white text-slate-600 font-bold py-2 px-4 rounded-xl border border-slate-200 shadow-sm flex items-center gap-2">
+              <LogOut className="w-4 h-4" /> יציאה
+            </button>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
+          <div className="p-6 border-b border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-4 bg-slate-50/50">
+            <div className="flex items-center gap-3">
+              <span className="font-medium text-slate-600">סינון למפגש:</span>
+              <select 
+                className="p-2 rounded-lg border border-slate-200 bg-white min-w-[120px]"
+                value={filterDay} onChange={e => setFilterDay(e.target.value)}
+              >
+                <option value="all">כל המפגשים</option>
+                <option value="1">מפגש 1</option>
+                <option value="2">מפגש 2</option>
+                <option value="3">מפגש 3</option>
+                <option value="4">מפגש 4</option>
+                <option value="5">מפגש 5</option>
+              </select>
+            </div>
+            
+            <button onClick={exportCSV} className="bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-bold py-2 px-4 rounded-xl border border-emerald-200 shadow-sm flex items-center gap-2 transition-colors">
+              <Download className="w-4 h-4" /> ייצוא ל-Excel
+            </button>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-right">
+              <thead className="bg-slate-50 border-b border-slate-100 text-slate-500 text-sm">
+                <tr>
+                  <th className="p-4 font-medium">שם הסטודנט/ית</th>
+                  <th className="p-4 font-medium">תעודת זהות</th>
+                  <th className="p-4 font-medium">מחלקה</th>
+                  <th className="p-4 font-medium text-center">מס' מפגש</th>
+                  <th className="p-4 font-medium text-center">שעת כניסה (בוקר)</th>
+                  <th className="p-4 font-medium text-center">שעת יציאה (אחה"צ)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {filteredRecords.map((record, i) => (
+                  <tr key={i} className="hover:bg-slate-50/50 transition-colors">
+                    <td className="p-4 font-bold text-slate-800">{record.name}</td>
+                    <td className="p-4 text-slate-600 font-mono">{record.id}</td>
+                    <td className="p-4 text-slate-600">{record.dept}</td>
+                    <td className="p-4 text-center font-medium bg-slate-50">{record.meeting}</td>
+                    <td className="p-4 text-center text-teal-600 font-mono" dir="ltr">{record.morning || '-'}</td>
+                    <td className="p-4 text-center text-rose-600 font-mono" dir="ltr">{record.afternoon || '-'}</td>
+                  </tr>
+                ))}
+                {filteredRecords.length === 0 && (
+                  <tr>
+                    <td colSpan="6" className="p-8 text-center text-slate-500">לא נמצאו רשומות לסינון זה</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Helper Icon for Lock
+const LockIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+);
+
+export default function App() {
+  const [currentRoute, setCurrentRoute] = useState('home'); // home, projector, checkin, admin
+  const [urlParams, setUrlParams] = useState(new URLSearchParams());
+  
+  // Glossary Modal State
+  const [glossaryTopic, setGlossaryTopic] = useState(null);
+
+  useEffect(() => {
+    // Simple router based on URL parameters for sharing links
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('page')) {
+      setCurrentRoute(params.get('page'));
+      setUrlParams(params);
+    }
+  }, []);
+
+  const navigate = (route, params = {}) => {
+    setCurrentRoute(route);
+    const searchParams = new URLSearchParams();
+    searchParams.set('page', route);
+    Object.keys(params).forEach(key => searchParams.set(key, params[key]));
+    
+    // Update URL without reload (for visual only in this sandbox)
+    const newUrl = `${window.location.pathname}?${searchParams.toString()}`;
+    window.history.pushState({path:newUrl},'',newUrl);
+    setUrlParams(searchParams);
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-50 font-sans" dir="rtl">
+      {currentRoute === 'home' && <HomeView navigate={navigate} openGlossary={setGlossaryTopic} />}
+      {currentRoute === 'projector' && <ProjectorView navigate={navigate} />}
+      {currentRoute === 'checkin' && <CheckInView navigate={navigate} urlParams={urlParams} />}
+      {currentRoute === 'admin' && <AdminView navigate={navigate} />}
+
+      {/* Glossary Modal - Global Component */}
+      {glossaryTopic && (
+        <div className="fixed inset-0 z-[100] flex flex-col md:items-center md:justify-center p-0 md:p-4 animate-in fade-in duration-200">
+          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setGlossaryTopic(null)}></div>
+          <div className="relative bg-white w-full h-full md:h-auto md:max-w-lg md:rounded-3xl shadow-2xl flex flex-col animate-in slide-in-from-bottom-8 md:slide-in-from-bottom-4">
+            
+            <div className="flex items-center justify-between p-6 pb-4 border-b border-slate-100">
+              <h3 className="text-xl font-bold text-sky-900 flex items-center gap-2">
+                <Book className="text-sky-600" />
+                מושגים: {glossaryTopic}
+              </h3>
+              <button onClick={() => setGlossaryTopic(null)} className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors">
+                ✕
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto max-h-[70vh] flex-grow">
+              {(glossaryData[glossaryTopic] || []).map((item, idx) => (
+                <div key={idx} className="mb-4 last:mb-0 bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                  <strong className="block text-slate-800 text-lg mb-1">{item.term}</strong>
+                  <span className="text-slate-600 text-sm leading-relaxed">{item.def}</span>
+                </div>
+              ))}
+              {(!glossaryData[glossaryTopic] || glossaryData[glossaryTopic].length === 0) && (
+                <p className="text-slate-500 text-center py-8">אין מושגים זמינים לשיעור זה כרגע.</p>
+              )}
+            </div>
+            
+            <div className="p-4 border-t border-slate-100 md:hidden">
+               <button onClick={() => setGlossaryTopic(null)} className="w-full bg-slate-100 text-slate-700 font-bold py-3 rounded-xl">סגור</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
